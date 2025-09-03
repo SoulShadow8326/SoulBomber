@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoulBomber - Game Lobby</title>
+    <link rel="icon" href="/bombs/bomb.png">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <canvas id="background-canvas" class="background-canvas"></canvas>
+    
+    <div id="game-lobby" class="screen active">
+        <div class="lobby-content">
+            <div class="left-panel">
+                <div class="title-section">
+                    <h1 class="pixel-title">SoulBomber</h1>
+                    <div class="lobby-id" id="lobby-id"></div>
+
+                </div>
+                
+                <div class="connection-status" id="connection-status">Connecting...</div>
+                
+                <div class="lobby-controls">
+                    <div class="control-buttons">
+                        <button class="start-btn" id="start-btn" onclick="startGame()">Start Game</button>
+                        <button class="leave-btn" onclick="leaveLobby()">Leave Lobby</button>
+                        <button class="change-name-btn" onclick="changePlayerName()">Change Name</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="right-panel">
+                <div class="players-section">
+                    <h2>Players</h2>
+                    <div id="players-grid" class="players-grid">
+                    </div>
+                </div>
+                
+
+            </div>
+        </div>
+    </div>
+
+    <div id="player-name-modal" class="modal">
+        <div class="modal-content">
+            <h3>Change Your Name</h3>
+            <form id="player-name-form">
+                <input type="text" id="player-name-input" required maxlength="15" placeholder="Your name">
+                <div class="modal-buttons">
+                    <button type="submit" class="pixel-button">Change</button>
+                    <button type="button" class="pixel-button" onclick="closePlayerNameModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="error-modal" class="modal">
+        <div class="modal-content">
+            <h3>Error</h3>
+            <p id="error-message"></p>
+            <button class="pixel-button" onclick="closeErrorModal()">OK</button>
+        </div>
+    </div>
+
+    <script src="/js/background.js"></script>
+    <script src="/js/game-lobby.js"></script>
+    <script>
+        let audioContext = null;
+        let stageMusic = null;
+        let gainNode = null;
+        
+        function initializeAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.connect(audioContext.destination);
+                gainNode.gain.value = 0.25;
+                
+                fetch('/audio/stage.ogg')
+                    .then(response => response.arrayBuffer())
+                    .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+                    .then(audioBuffer => {
+                        stageMusic = audioBuffer;
+                        playStageMusic();
+                    })
+                    .catch(error => {
+                        console.log('Failed to load stage music:', error);
+                    });
+            } catch (error) {
+                console.log('Audio context not supported:', error);
+            }
+        }
+        
+        function playStageMusic() {
+            if (audioContext && stageMusic) {
+                const source = audioContext.createBufferSource();
+                source.buffer = stageMusic;
+                source.connect(gainNode);
+                source.loop = true;
+                source.start(0);
+            }
+        }
+        
+        function resumeAudio() {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+        
+        let audioInitialized = false;
+        document.addEventListener('click', function() {
+            if (!audioInitialized) {
+                initializeAudio();
+                audioInitialized = true;
+            }
+        });
+    </script>
+</body>
+</html> 

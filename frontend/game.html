@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoulBomber - Game</title>
+    <link rel="icon" href="/bombs/bomb.png">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <canvas id="background-canvas" class="background-canvas"></canvas>
+    
+    <div id="game-screen" class="screen active">
+        <div class="game-header">
+            <h1>SoulBomber</h1>
+            <div class="connection-status" id="game-connection-status">Connected</div>
+        </div>
+        
+        <div class="game-canvas-container">
+            <canvas id="game-canvas" class="game-canvas"></canvas>
+        </div>
+        
+        <div class="game-controls">
+            <div class="control-buttons">
+                <button onclick="movePlayer('up')">↑</button>
+                <button onclick="movePlayer('down')">↓</button>
+                <button onclick="movePlayer('left')">←</button>
+                <button onclick="movePlayer('right')">→</button>
+                <button onclick="placeBomb()">ACT</button>
+                <button id="dashButton" onclick="sendDash(playerDirection)">DASH</button>
+            </div>
+        </div>
+        
+        <div class="game-info">
+            <div class="players-list">
+                <h3>Scores</h3>
+                <div id="game-players-list">
+                </div>
+            </div>
+        </div>
+        
+        <button id="mainMenuButton" class="main-menu-btn" onclick="goToMainMenu()">MAIN MENU</button>
+        
+        <button id="restartButton" class="restart-btn" onclick="restartGame()">RESET</button>
+    </div>
+
+    <div id="error-modal" class="modal">
+        <div class="modal-content">
+            <h3>Error</h3>
+            <p id="error-message"></p>
+            <button class="pixel-button" onclick="closeErrorModal()">OK</button>
+        </div>
+    </div>
+
+    <script src="/js/background.js"></script>
+    <script src="/js/pixel-worker-manager.js"></script>
+    <div id="dash-toast" style="position:fixed;right:20px;top:20px;display:none;z-index:2000;font-family:'Press Start 2P',monospace;pointer-events:none;">
+        <div id="dash-toast-inner" style="background:#081423;border:4px solid #ff6b35;padding:10px 14px;color:#fff;display:flex;align-items:center;gap:10px;box-shadow:0 6px 0 #000">
+            <div style="width:28px;height:28px;background:#00ffff;image-rendering:pixelated"></div>
+            <div id="dash-toast-text" style="font-size:12px">DASH</div>
+        </div>
+    </div>
+    <script src="/js/game.js"></script>
+</body>
+</html> 

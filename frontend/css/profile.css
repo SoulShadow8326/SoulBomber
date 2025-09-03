@@ -1,0 +1,345 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Press Start 2P', monospace;
+    color: #ffffff;
+    min-height: 100vh;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    background: #0f0f23;
+    position: relative;
+    overflow-x: hidden;
+    padding: 5vw;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    background: 
+        repeating-linear-gradient(0deg, transparent, transparent 4px, rgba(255, 255, 255, 0.03) 4px, rgba(255, 255, 255, 0.03) 8px),
+        repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(255, 255, 255, 0.03) 4px, rgba(255, 255, 255, 0.03) 8px),
+        repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(255, 0, 0, 0.02) 8px, rgba(255, 0, 0, 0.02) 16px),
+        repeating-linear-gradient(-45deg, transparent, transparent 8px, rgba(0, 255, 255, 0.02) 8px, rgba(0, 255, 255, 0.02) 16px);
+    pointer-events: none;
+}
+
+
+
+@keyframes header-glow {
+    0%, 100% {
+        box-shadow: 0 4px 0 #000, 0 8px 8px rgba(0, 0, 0, 0.3), inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 0 10px #ffff00;
+    }
+    50% {
+        box-shadow: 0 4px 0 #000, 0 8px 8px rgba(0, 0, 0, 0.3), inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 0 20px #ffff00, 0 0 30px #ffff00;
+    }
+}
+
+.profile-avatar {
+    width: 18vw;
+    height: 18vw;
+    min-width: 120px;
+    min-height: 120px;
+    max-width: 300px;
+    max-height: 300px;
+    background: rgba(0,0,0,0.7);
+    border: 0.4vw solid #2977f5;
+    border-radius: 0;
+    margin: 0 auto 4vw auto;
+    display: block;
+    box-shadow: 0 0.8vw 2vw 0 rgba(0,0,0,0.7);
+    transition: all 0.3s ease;
+    animation: avatar-pulse 4s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+@keyframes avatar-pulse {
+    0%, 100% {
+        transform: scale(1);
+        border-color: #ffff00;
+    }
+    50% {
+        transform: scale(1.05);
+        border-color: #ff4444;
+    }
+}
+
+.profile-avatar:hover {
+    transform: translateY(-4px) scale(1.1);
+    box-shadow: 
+        0 8px 0 #ff4444,
+        0 12px 12px rgba(0, 0, 0, 0.4),
+        inset 0 2px 0 rgba(255, 255, 255, 0.2);
+}
+
+.profile-name {
+    font-size: 2rem;
+    color: #ffff00;
+    text-shadow: 4px 4px 0px #ff4444, 8px 8px 0px #000;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    animation: name-glow 2s ease-in-out infinite alternate;
+    margin-bottom: 2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+@keyframes name-glow {
+    from {
+        text-shadow: 4px 4px 0px #ff4444, 8px 8px 0px #000, 0 0 20px #ffff00;
+    }
+    to {
+        text-shadow: 4px 4px 0px #ff4444, 8px 8px 0px #000, 0 0 30px #ffff00, 0 0 40px #ffff00;
+    }
+}
+
+.profile-bio-section {
+    background: rgba(0,0,0,0.7);
+    border: 0.3vw solid #2977f5;
+    border-radius: 0;
+    padding: 4vw 5vw;
+    margin: 6vw 0;
+    box-shadow: 0 1vw 2.5vw 0 rgba(0,0,0,0.7);
+    animation: section-bounce 4s ease-in-out infinite;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+@keyframes section-bounce {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+.profile-bio {
+    color: #ffff00;
+    font-size: 1rem;
+    text-shadow: 2px 2px 0px #000;
+    line-height: 1.6;
+    text-align: center;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.profile-stats {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 4vw !important;
+    margin: 6vw 0 !important;
+    width: 100% !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 3vw !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.profile-stat {
+    color: #ffffff !important;
+    font-size: clamp(1rem, 2vw, 1.5rem) !important;
+    padding: 3vw 2vw !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1rem !important;
+    text-shadow: 2px 2px 0px #000 !important;
+    transition: all 0.2s ease !important;
+    position: relative !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    flex: 0 0 auto !important;
+    min-width: clamp(200px, 20vw, 300px) !important;
+    max-width: clamp(250px, 25vw, 400px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 1vw !important;
+    box-sizing: border-box !important;
+    text-align: center !important;
+}
+
+.profile-stat:hover {
+    transform: translateY(-4px) !important;
+    color: #ffff00 !important;
+}
+
+.profile-stat:active {
+    transform: translateY(-2px) !important;
+    color: #ff4444 !important;
+}
+
+.profile-stat *, .profile-stat a {
+    color: #ffffff !important;
+    text-shadow: 2px 2px 0px #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.profile-avatar.size-300 {
+    width: 300px !important;
+    height: 300px !important;
+}
+
+.profile-avatar.square {
+    border-radius: 25px !important;
+}
+
+.profile-avatar.rounded {
+    border-radius: 50% !important;
+}
+
+.profile-avatar.hide {
+    display: none !important;
+}
+
+.profile-header.custom-avatar::before {
+    content: "";
+    display: block;
+    width: 256px;
+    height: 256px;
+    background-image: url("https://placehold.co/256x256/png");
+    background-size: cover;
+    background-position: center;
+    border-radius: 50%;
+    margin: 0 auto 2rem auto;
+    border: 4px solid #ffff00;
+    box-shadow: 0 4px 0 #ff4444, 0 8px 8px rgba(0, 0, 0, 0.3);
+}
+
+.card-with-gradient,
+.card-with-gradient *,
+.card-with-gradient a {
+    font-family: 'Press Start 2P', monospace !important;
+    color: #ffff00 !important;
+    text-shadow: 2px 2px 0px #000 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    font-size: 1.1vw !important;
+    line-height: 1.7 !important;
+}
+
+.card-with-gradient {
+    background: rgba(0,0,0,0.7) !important;
+    border: 0.4vw solid #2977f5 !important;
+    border-radius: 0 !important;
+    box-shadow: 0 0.5vw 0 #2977f5, 0 1vw 1vw rgba(0,0,0,0.3), inset 0 0.2vw 0 rgba(255,255,255,0.15) !important;
+    padding: 5vw 6vw !important;
+    margin: 6vw 0 !important;
+    transition: all 0.1s ease !important;
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2vw !important;
+    animation: card-float 6s ease-in-out infinite !important;
+    width: 100% !important;
+    align-items: center !important;
+}
+
+.card-with-gradient:hover {
+    transform: translateY(0.5vw) scale(1.01) !important;
+    box-shadow: 0 0.2vw 0 #ff6b6b, 0 0.5vw 0 #2977f5, 0 1vw 1vw rgba(0,0,0,0.4) !important;
+    border-color: #ff6b6b !important;
+}
+
+.card-with-gradient::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.card-with-gradient:hover::before {
+    transform: translateX(100%);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Press Start 2P', monospace !important;
+    color: #ffff00 !important;
+    text-shadow: 2px 2px 0px #000 !important;
+    text-transform: uppercase !important;
+    animation: pixel-glow 3s ease-in-out infinite alternate !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+    margin-bottom: 2rem !important;
+}
+
+@keyframes pixel-glow {
+    0%, 100% {
+        text-shadow: 2px 2px 0px #000, 0 0 10px #ffff00;
+    }
+    50% {
+        text-shadow: 2px 2px 0px #000, 0 0 20px #ffff00, 0 0 30px #ffff00;
+    }
+}
+
+h2.text-2xl.font-bold.text-gray-800 {
+    font-size: 2rem !important;
+    font-weight: bold !important;
+}
+
+@media (max-width: 768px) {
+    body {
+        padding: 3vw;
+    }
+    
+    .profile-stats {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 6vw !important;
+        padding: 4vw !important;
+        max-width: 100% !important;
+    }
+    
+    .profile-stat {
+        min-width: 90vw !important;
+        max-width: 90vw !important;
+        font-size: clamp(0.8rem, 4vw, 1.2rem) !important;
+        margin: 2vw 0 !important;
+        padding: 6vw 4vw !important;
+        text-align: center !important;
+    }
+    
+    .profile-name {
+        font-size: 1.5rem;
+    }
+    
+    .profile-bio {
+        font-size: 0.9rem;
+    }
+    
+    .profile-header {
+        margin-bottom: 8vw;
+    }
+    
+    .profile-bio-section {
+        margin: 8vw 0;
+    }
+}

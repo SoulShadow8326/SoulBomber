@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoulBomber - Create Lobby</title>
+    <link rel="icon" href="/bombs/bomb.png">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <canvas id="background-canvas" class="background-canvas"></canvas>
+    
+    <div id="create-lobby" class="screen active">
+        <div class="header">
+            <h2>Create New Lobby</h2>
+            <button class="pixel-button back-btn" onclick="window.location.href='/'">Back</button>
+        </div>
+        
+        <form id="create-lobby-form" class="pixel-form">
+            <div class="form-group">
+                <label for="lobby-name">Lobby Name:</label>
+                <input type="text" id="lobby-name" required maxlength="20">
+            </div>
+            
+
+            
+            <button type="submit" class="pixel-button">Create Lobby</button>
+        </form>
+    </div>
+
+    <div id="player-name-modal" class="modal">
+        <div class="modal-content">
+            <h3>Enter Your Name</h3>
+            <form id="player-name-form">
+                <input type="text" id="player-name-input" required maxlength="15" placeholder="Your name">
+                <div class="modal-buttons">
+                    <button type="submit" class="pixel-button">Join</button>
+                    <button type="button" class="pixel-button" onclick="closePlayerNameModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="error-modal" class="modal">
+        <div class="modal-content">
+            <h3>Error</h3>
+            <p id="error-message"></p>
+            <button class="pixel-button" onclick="closeErrorModal()">OK</button>
+        </div>
+    </div>
+
+    <script src="/js/background.js"></script>
+    <script src="/js/create-lobby.js"></script>
+    <script>
+        let audioContext = null;
+        let backgroundMusic = null;
+        let gainNode = null;
+        
+        function initializeAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.connect(audioContext.destination);
+                gainNode.gain.value = 0.25;
+                
+                fetch('/audio/Background.ogg')
+                    .then(response => response.arrayBuffer())
+                    .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+                    .then(audioBuffer => {
+                        backgroundMusic = audioBuffer;
+                        playBackgroundMusic();
+                    })
+                    .catch(error => {
+                        console.log('Failed to load background music:', error);
+                    });
+            } catch (error) {
+                console.log('Audio context not supported:', error);
+            }
+        }
+        
+        function playBackgroundMusic() {
+            if (audioContext && backgroundMusic) {
+                const source = audioContext.createBufferSource();
+                source.buffer = backgroundMusic;
+                source.connect(gainNode);
+                source.loop = true;
+                source.start(0);
+            }
+        }
+        
+        function resumeAudio() {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeAudio();
+        });
+        
+        document.addEventListener('click', function() {
+            resumeAudio();
+        }, { once: true });
+    </script>
+</body>
+</html> 
