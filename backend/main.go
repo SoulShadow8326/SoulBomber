@@ -62,7 +62,8 @@ func createTables() {
 			max_players INTEGER DEFAULT 4,
 			status TEXT DEFAULT 'waiting',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			is_single_player BOOLEAN DEFAULT FALSE
+			is_single_player BOOLEAN DEFAULT FALSE,
+			ai_players TEXT DEFAULT '[]'
 		)
 	`)
 	if err != nil {
@@ -107,6 +108,11 @@ func createTables() {
 	}
 
 	_, err = db.Exec(`ALTER TABLE players ADD COLUMN score INTEGER DEFAULT 0`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		log.Printf("Migration warning: %v", err)
+	}
+
+	_, err = db.Exec(`ALTER TABLE lobbies ADD COLUMN ai_players TEXT DEFAULT '[]'`)
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		log.Printf("Migration warning: %v", err)
 	}
