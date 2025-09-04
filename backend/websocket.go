@@ -29,19 +29,21 @@ type Connection struct {
 }
 
 type Hub struct {
-	connections map[string]*Connection
-	register    chan *Connection
-	unregister  chan *Connection
-	broadcast   chan []byte
-	mu          sync.RWMutex
+	connections      map[string]*Connection
+	register         chan *Connection
+	unregister       chan *Connection
+	broadcast        chan []byte
+	mu               sync.RWMutex
+	lobbyConnections map[string]map[string]*Connection
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		connections: make(map[string]*Connection),
-		register:    make(chan *Connection),
-		unregister:  make(chan *Connection),
-		broadcast:   make(chan []byte),
+		connections:      make(map[string]*Connection),
+		register:         make(chan *Connection),
+		unregister:       make(chan *Connection),
+		broadcast:        make(chan []byte),
+		lobbyConnections: make(map[string]map[string]*Connection),
 	}
 }
 
@@ -63,6 +65,14 @@ func (h *Hub) Run() {
 			if _, ok := h.connections[conn.ID]; ok {
 				delete(h.connections, conn.ID)
 				close(conn.Send)
+				if conn.LobbyID != "" {
+					if m, ok := h.lobbyConnections[conn.LobbyID]; ok {
+						delete(m, conn.ID)
+						if len(m) == 0 {
+							delete(h.lobbyConnections, conn.LobbyID)
+						}
+					}
+				}
 			}
 			h.mu.Unlock()
 			logInfo("WebSocket connection unregistered",
@@ -84,6 +94,26 @@ func (h *Hub) Run() {
 			h.mu.RUnlock()
 		}
 	}
+}
+
+func (h *Hub) setConnectionLobby(conn *Connection, oldLobby string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if oldLobby != "" {
+		if m, ok := h.lobbyConnections[oldLobby]; ok {
+			delete(m, conn.ID)
+			if len(m) == 0 {
+				delete(h.lobbyConnections, oldLobby)
+			}
+		}
+	}
+	if conn.LobbyID == "" {
+		return
+	}
+	if _, ok := h.lobbyConnections[conn.LobbyID]; !ok {
+		h.lobbyConnections[conn.LobbyID] = make(map[string]*Connection)
+	}
+	h.lobbyConnections[conn.LobbyID][conn.ID] = conn
 }
 
 func (c *Connection) readPump() {
@@ -145,7 +175,6 @@ func (c *Connection) writePump() {
 				return
 			}
 
-			logInfo("Writing message", "data", string(message))
 			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
@@ -225,7 +254,6 @@ func (c *Connection) handleJoinLobby(payload interface{}) error {
 		return c.sendError("Invalid lobby ID")
 	}
 
-	c.LobbyID = lobbyID
 	c.PlayerID = playerID
 
 	playerTracker.RegisterPlayer(playerID, lobbyID, playerName, c.ID, false)
@@ -238,6 +266,10 @@ func (c *Connection) handleJoinLobby(payload interface{}) error {
 		}
 		return c.sendError(err.Error())
 	}
+
+	oldLobby := c.LobbyID
+	c.LobbyID = lobbyID
+	hub.setConnectionLobby(c, oldLobby)
 
 	broadcastLobbyUpdate(lobbyID)
 	return nil
@@ -357,6 +389,10 @@ func (c *Connection) handleLeaveLobby(payload interface{}) error {
 	leaveLobby(lobbyID, playerID)
 	playerTracker.UnregisterPlayer(playerID, c.ID)
 
+	oldLobby := c.LobbyID
+	c.LobbyID = ""
+	hub.setConnectionLobby(c, oldLobby)
+
 	broadcastLobbyUpdate(lobbyID)
 	return c.sendMessage("left", "Successfully left lobby")
 }
@@ -400,7 +436,7 @@ func (c *Connection) handlePlaceBomb(_ interface{}) error {
 	return c.sendError("Game not found")
 }
 
-func (c *Connection) handleRemoteDetonate(payload interface{}) error {
+func (c *Connection) handleRemoteDetonate(_ interface{}) error {
 	game := getGameByPlayerID(c.PlayerID)
 	if game == nil {
 		return c.sendError("Game not found")
@@ -555,8 +591,6 @@ func (c *Connection) sendMessage(msgType string, payload interface{}) error {
 		return err
 	}
 
-	logInfo("Sending message", "type", msgType, "data", string(data))
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -585,21 +619,21 @@ func broadcastToLobby(lobbyID string, messageType string, payload interface{}) {
 	}
 
 	hub.mu.RLock()
-	defer hub.mu.RUnlock()
+	m, ok := hub.lobbyConnections[lobbyID]
+	if !ok {
+		hub.mu.RUnlock()
+		return
+	}
 
 	count := 0
-	for _, conn := range hub.connections {
-		if conn.LobbyID == lobbyID {
-			select {
-			case conn.Send <- data:
-				count++
-				logInfo("Sent to connection", "connectionID", conn.ID, "playerID", conn.PlayerID)
-			default:
-				logInfo("Connection buffer full", "connectionID", conn.ID)
-			}
+	for _, conn := range m {
+		select {
+		case conn.Send <- data:
+			count++
+		default:
 		}
 	}
-	logInfo("Broadcast complete", "lobbyID", lobbyID, "sentTo", fmt.Sprintf("%d", count))
+	hub.mu.RUnlock()
 }
 
 func broadcastLobbyUpdate(lobbyID string) {
@@ -632,6 +666,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logError("WebSocket upgrade failed", err)
 		return
+	}
+
+	if err := conn.SetCompressionLevel(2); err != nil {
 	}
 
 	connection := &Connection{

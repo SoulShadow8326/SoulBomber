@@ -8,21 +8,19 @@ import (
 	"time"
 )
 
-
 type HealthStatus struct {
-	Status string `json:"status"`
-	Timestamp time.Time `json:"timestamp"`
-	Uptime time.Duration `json:"uptime"`
-	Version string `json:"version"`
-	Services map[string]string `json:"services"`
-	Stats map[string]int `json:"stats"`
+	Status    string            `json:"status"`
+	Timestamp time.Time         `json:"timestamp"`
+	Uptime    time.Duration     `json:"uptime"`
+	Version   string            `json:"version"`
+	Services  map[string]string `json:"services"`
+	Stats     map[string]int    `json:"stats"`
 }
 
 var (
 	startTime = time.Now()
 	version   = "1.0.0"
 )
-
 
 func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	status := HealthStatus{
@@ -39,9 +37,12 @@ func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	} else {
 		status.Services["database"] = "healthy"
 	}
-	connectionsMu.RLock()
-	activeConnCount := len(activeConnections)
-	connectionsMu.RUnlock()
+	activeConnCount := 0
+	if hub != nil {
+		hub.mu.RLock()
+		activeConnCount = len(hub.connections)
+		hub.mu.RUnlock()
+	}
 	status.Services["websocket"] = "healthy"
 	status.Stats["activeConnections"] = activeConnCount
 
@@ -74,7 +75,6 @@ func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
-
 func checkDatabaseHealth() error {
 	var result int
 	err := db.QueryRow("SELECT 1").Scan(&result)
@@ -89,7 +89,6 @@ func checkDatabaseHealth() error {
 	return nil
 }
 
-
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics := map[string]interface{}{
 		"uptime":            time.Since(startTime).Seconds(),
@@ -102,9 +101,13 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 			"sys":        0,
 		},
 	}
-	connectionsMu.RLock()
-	metrics["activeConnections"] = len(activeConnections)
-	connectionsMu.RUnlock()
+	if hub != nil {
+		hub.mu.RLock()
+		metrics["activeConnections"] = len(hub.connections)
+		hub.mu.RUnlock()
+	} else {
+		metrics["activeConnections"] = 0
+	}
 	gamesMu.RLock()
 	metrics["activeGames"] = len(games)
 	gamesMu.RUnlock()

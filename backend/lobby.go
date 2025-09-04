@@ -6,13 +6,13 @@ import (
 	"log"
 	"math/rand"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 var (
 	lobbyCleanupRunning bool
 )
+
+const boardSize = 15
 
 func startLobbyCleanup() {
 	if lobbyCleanupRunning {
@@ -124,7 +124,7 @@ func updateLobbyPlayerCount(lobbyID string, playerCount int) error {
 }
 
 func createLobby(name string, isSinglePlayer bool, aiPlayers []AIPlayer) (*Lobby, error) {
-	id := uuid.New().String()
+	id := newUUID()
 	now := time.Now()
 
 	aiPlayersJSON, err := json.Marshal(aiPlayers)
@@ -249,106 +249,65 @@ func getPlayersForLobby(lobbyID string) []Player {
 	return players
 }
 
-func joinLobby(lobbyID, playerID string) error {
-	var lobby Lobby
-	err := db.QueryRow(`
-		SELECT player_count, max_players
-		FROM lobbies
-		WHERE id = ?
-	`, lobbyID).Scan(&lobby.PlayerCount, &lobby.MaxPlayers)
-
-	if err != nil {
-		logError("Lobby not found in joinLobby", err, "lobbyID", lobbyID)
-		return fmt.Errorf("lobby not found")
+func getSpawnPositions() []Position {
+	s := 2
+	l := boardSize - 3
+	return []Position{
+		{Row: s, Col: s},
+		{Row: s, Col: l},
+		{Row: l, Col: s},
+		{Row: l, Col: l},
 	}
-
-	if playerTracker != nil {
-		sessions := playerTracker.GetLobbyPlayers(lobbyID)
-		playerCount := len(sessions)
-
-		if playerCount >= lobby.MaxPlayers {
-			return fmt.Errorf("lobby is full")
-		}
-
-		_, err = db.Exec(`
-			UPDATE lobbies
-			SET player_count = ?
-			WHERE id = ?
-		`, playerCount+1, lobbyID)
-
-		if err != nil {
-			logError("Failed to update lobby player count", err, "lobbyID", lobbyID)
-		}
-	}
-
-	return nil
 }
 
-func leaveLobby(lobbyID, playerID string) error {
-	if playerTracker != nil {
-		if session := playerTracker.GetPlayerSession(playerID); session != nil {
-			if len(session.WebSocketIDs) > 0 {
-				return nil
+func initializePlayers(game *Game, players []Player, joiningPlayerID string) {
+	spawnPositions := getSpawnPositions()
+	playerIndex := 0
+
+	for _, p := range players {
+		pc := p
+		pc.Alive = true
+		pc.BombCount = 0
+		pc.MaxBombs = 1
+		pc.BombRange = 1
+		pc.Score = 0
+		pc.Powerups = make(map[string]*PlayerPowerup)
+		pos := spawnPositions[playerIndex%4]
+		pc.Position = pos
+		pc.SpawnPosition = pos
+		game.Players[pc.ID] = &pc
+		if pc.IsAI {
+			game.startAITicker(pc.ID)
+		}
+		playerIndex++
+	}
+
+	if _, exists := game.Players[joiningPlayerID]; !exists {
+		playerName := "Player"
+		if playerTracker != nil {
+			if session := playerTracker.GetPlayerSession(joiningPlayerID); session != nil {
+				playerName = session.PlayerName
 			}
 		}
-
-		sessions := playerTracker.GetLobbyPlayers(lobbyID)
-		playerCount := len(sessions)
-
-		_, err := db.Exec(`
-			UPDATE lobbies
-			SET player_count = ?
-			WHERE id = ?
-		`, playerCount, lobbyID)
-
-		return err
+		spawnPos := spawnPositions[playerIndex%4]
+		p := &Player{
+			ID:            joiningPlayerID,
+			Name:          playerName,
+			Position:      spawnPos,
+			SpawnPosition: spawnPos,
+			Alive:         true,
+			BombCount:     0,
+			MaxBombs:      1,
+			BombRange:     1,
+			IsAI:          false,
+			Score:         0,
+			Powerups:      make(map[string]*PlayerPowerup),
+		}
+		game.Players[joiningPlayerID] = p
 	}
-
-	return nil
 }
 
-func joinLobbyWithName(lobbyID, playerID, playerName string) error {
-	var lobby Lobby
-	err := db.QueryRow(`
-		SELECT player_count, max_players
-		FROM lobbies
-		WHERE id = ?
-	`, lobbyID).Scan(&lobby.PlayerCount, &lobby.MaxPlayers)
-
-	if err != nil {
-		return fmt.Errorf("lobby not found")
-	}
-
-	if playerTracker != nil {
-		sessions := playerTracker.GetLobbyPlayers(lobbyID)
-		playerCount := len(sessions)
-
-		if playerCount >= lobby.MaxPlayers {
-			return fmt.Errorf("lobby is full")
-		}
-
-		_, err = db.Exec(`
-			UPDATE lobbies
-			SET player_count = ?
-			WHERE id = ?
-		`, playerCount+1, lobbyID)
-
-		if err != nil {
-			logError("Failed to update lobby player count", err, "lobbyID", lobbyID)
-		}
-
-		playerTracker.UpdatePlayerStatus(playerID, "active")
-	}
-
-	return nil
-}
-
-func startSinglePlayerGame(lobbyID, playerID string) (*Game, error) {
-	_, players, exists := getLobbyWithPlayers(lobbyID)
-	if !exists {
-		return nil, fmt.Errorf("lobby not found")
-	}
-
+func startGameInternal(lobbyID, joiningPlayerID string, players []Player) (*Game, error) {
 	gamesMu.Lock()
 	for gameID, game := range games {
 		if game.LobbyID == lobbyID {
@@ -357,7 +316,7 @@ func startSinglePlayerGame(lobbyID, playerID string) (*Game, error) {
 	}
 	gamesMu.Unlock()
 
-	gameID := uuid.New().String()
+	gameID := newUUID()
 	game := &Game{
 		ID:         gameID,
 		LobbyID:    lobbyID,
@@ -375,7 +334,6 @@ func startSinglePlayerGame(lobbyID, playerID string) (*Game, error) {
 		INSERT INTO games (id, lobby_id, status, start_time, board)
 		VALUES (?, ?, ?, ?, ?)
 	`, gameID, lobbyID, "playing", game.StartTime, "[]")
-
 	if err != nil {
 		return nil, err
 	}
@@ -385,60 +343,11 @@ func startSinglePlayerGame(lobbyID, playerID string) (*Game, error) {
 		SET status = 'playing'
 		WHERE id = ?
 	`, lobbyID)
-
 	if err != nil {
 		return nil, err
 	}
-	spawnPositions := []Position{
-		{Row: 2, Col: 2},
-		{Row: 2, Col: 12},
-		{Row: 12, Col: 2},
-		{Row: 12, Col: 12},
-	}
 
-	playerIndex := 0
-	for _, player := range players {
-		playerCopy := player
-		playerCopy.Alive = true
-		playerCopy.BombCount = 0
-		playerCopy.MaxBombs = 1
-		playerCopy.BombRange = 1
-		playerCopy.Score = 0
-		playerCopy.Powerups = make(map[string]*PlayerPowerup)
-		playerCopy.Position = spawnPositions[playerIndex%4]
-		playerCopy.SpawnPosition = spawnPositions[playerIndex%4]
-		game.Players[playerCopy.ID] = &playerCopy
-		if playerCopy.IsAI {
-			game.startAITicker(playerCopy.ID)
-		}
-		playerIndex++
-	}
-
-	if _, exists := game.Players[playerID]; !exists {
-		playerName := "Player"
-		if playerTracker != nil {
-			if session := playerTracker.GetPlayerSession(playerID); session != nil {
-				playerName = session.PlayerName
-			}
-		}
-
-		spawnPos := spawnPositions[playerIndex%4]
-
-		player := &Player{
-			ID:            playerID,
-			Name:          playerName,
-			Position:      spawnPos,
-			SpawnPosition: spawnPos,
-			Alive:         true,
-			BombCount:     0,
-			MaxBombs:      1,
-			BombRange:     1,
-			IsAI:          false,
-			Score:         0,
-			Powerups:      make(map[string]*PlayerPowerup),
-		}
-		game.Players[playerID] = player
-	}
+	initializePlayers(game, players, joiningPlayerID)
 
 	games[gameID] = game
 
@@ -447,90 +356,84 @@ func startSinglePlayerGame(lobbyID, playerID string) (*Game, error) {
 	return game, nil
 }
 
+func joinLobby(lobbyID, playerID string) error {
+	if playerTracker == nil {
+		return nil
+	}
+
+	playerTracker.UpdatePlayerStatus(playerID, "active")
+
+	sessions := playerTracker.GetLobbyPlayers(lobbyID)
+	playerCount := len(sessions)
+
+	var maxPlayers int
+	err := db.QueryRow(`SELECT max_players FROM lobbies WHERE id = ?`, lobbyID).Scan(&maxPlayers)
+	if err != nil {
+		logError("Lobby not found in joinLobby", err, "lobbyID", lobbyID)
+		return fmt.Errorf("lobby not found")
+	}
+
+	if playerCount >= maxPlayers {
+		return fmt.Errorf("lobby is full")
+	}
+
+	return updateLobbyCountFromTracker(lobbyID)
+}
+
+func leaveLobby(lobbyID, playerID string) error {
+	if playerTracker != nil {
+		if session := playerTracker.GetPlayerSession(playerID); session != nil {
+			if len(session.WebSocketIDs) > 0 {
+				return nil
+			}
+		}
+		return updateLobbyCountFromTracker(lobbyID)
+	}
+
+	return nil
+}
+
+func joinLobbyWithName(lobbyID, playerID, playerName string) error {
+	if playerTracker == nil {
+		return fmt.Errorf("lobby not found")
+	}
+
+	sessions := playerTracker.GetLobbyPlayers(lobbyID)
+	playerCount := len(sessions)
+
+	var maxPlayers int
+	err := db.QueryRow(`SELECT max_players FROM lobbies WHERE id = ?`, lobbyID).Scan(&maxPlayers)
+	if err != nil {
+		return fmt.Errorf("lobby not found")
+	}
+
+	if playerCount >= maxPlayers {
+		return fmt.Errorf("lobby is full")
+	}
+
+	if err := updateLobbyCountFromTracker(lobbyID); err != nil {
+		logError("Failed to update lobby player count", err, "lobbyID", lobbyID)
+	}
+
+	playerTracker.UpdatePlayerName(playerID, playerName)
+	playerTracker.UpdatePlayerStatus(playerID, "active")
+	return nil
+}
+
+func startSinglePlayerGame(lobbyID, playerID string) (*Game, error) {
+	_, players, exists := getLobbyWithPlayers(lobbyID)
+	if !exists {
+		return nil, fmt.Errorf("lobby not found")
+	}
+	return startGameInternal(lobbyID, playerID, players)
+}
+
 func startGame(lobbyID, playerID string) (*Game, error) {
 	players := getPlayersForLobby(lobbyID)
 	if len(players) == 0 {
 		return nil, fmt.Errorf("no players in lobby")
 	}
-
-	gamesMu.Lock()
-	for gameID, game := range games {
-		if game.LobbyID == lobbyID {
-			delete(games, gameID)
-		}
-	}
-	gamesMu.Unlock()
-
-	gameID := uuid.New().String()
-	game := &Game{
-		ID:         gameID,
-		LobbyID:    lobbyID,
-		Board:      generateBoard(),
-		Players:    make(map[string]*Player),
-		Bombs:      make(map[string]*Bomb),
-		Explosions: make(map[string]*Explosion),
-		Powerups:   generatePowerups(1),
-		Status:     "playing",
-		StartTime:  time.Now(),
-		aiTickers:  make(map[string]*time.Ticker),
-	}
-
-	spawnPositions := []Position{
-		{Row: 2, Col: 2},
-		{Row: 2, Col: 12},
-		{Row: 12, Col: 2},
-		{Row: 12, Col: 12},
-	}
-
-	playerIndex := 0
-	for _, player := range players {
-		playerCopy := player
-		playerCopy.Alive = true
-		playerCopy.BombCount = 0
-		playerCopy.MaxBombs = 1
-		playerCopy.BombRange = 1
-		playerCopy.Score = 0
-		playerCopy.Powerups = make(map[string]*PlayerPowerup)
-		playerCopy.Position = spawnPositions[playerIndex%4]
-		playerCopy.SpawnPosition = spawnPositions[playerIndex%4]
-		game.Players[playerCopy.ID] = &playerCopy
-		if playerCopy.IsAI {
-			game.startAITicker(playerCopy.ID)
-		}
-		playerIndex++
-	}
-
-	if _, exists := game.Players[playerID]; !exists {
-		playerName := "Player"
-		if playerTracker != nil {
-			if session := playerTracker.GetPlayerSession(playerID); session != nil {
-				playerName = session.PlayerName
-			}
-		}
-
-		spawnPos := spawnPositions[playerIndex%4]
-
-		player := &Player{
-			ID:            playerID,
-			Name:          playerName,
-			Position:      spawnPos,
-			SpawnPosition: spawnPos,
-			Alive:         true,
-			BombCount:     0,
-			MaxBombs:      1,
-			BombRange:     1,
-			IsAI:          false,
-			Score:         0,
-			Powerups:      make(map[string]*PlayerPowerup),
-		}
-		game.Players[playerID] = player
-	}
-
-	games[gameID] = game
-
-	game.startGameTimers()
-
-	return game, nil
+	return startGameInternal(lobbyID, playerID, players)
 }
 
 func generateBoard() [][]int {
@@ -576,7 +479,7 @@ func generatePowerups(level int) map[string]*Powerup {
 	centerRow := 7
 	centerCol := 7
 
-	shieldID := uuid.New().String()
+	shieldID := newUUID()
 	powerups[shieldID] = &Powerup{
 		ID:       shieldID,
 		Type:     POWERUP_SHIELD,
@@ -604,7 +507,7 @@ func generatePowerups(level int) map[string]*Powerup {
 		idx := rand.Intn(len(validPositions))
 		randomPos := validPositions[idx]
 		validPositions = append(validPositions[:idx], validPositions[idx+1:]...)
-		powerupID := uuid.New().String()
+		powerupID := newUUID()
 		powerups[powerupID] = &Powerup{
 			ID:       powerupID,
 			Type:     POWERUP_BOMB_RANGE,
@@ -617,8 +520,14 @@ func generatePowerups(level int) map[string]*Powerup {
 }
 
 func removeAIFromLobby(lobbyID string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var aiPlayerID string
-	err := db.QueryRow(`
+	err = tx.QueryRow(`
 		SELECT id
 		FROM players
 		WHERE lobby_id = ? AND is_ai = true
@@ -630,55 +539,72 @@ func removeAIFromLobby(lobbyID string) error {
 		return fmt.Errorf("no AI players found")
 	}
 
-	_, err = db.Exec(`
-		DELETE FROM players
-		WHERE id = ?
-	`, aiPlayerID)
-
+	_, err = tx.Exec(`DELETE FROM players WHERE id = ?`, aiPlayerID)
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Exec(`
-		UPDATE lobbies
-		SET player_count = player_count - 1
-		WHERE id = ?
-	`, lobbyID)
+	if _, err := tx.Exec(`UPDATE lobbies SET player_count = player_count - 1 WHERE id = ?`, lobbyID); err != nil {
+		return err
+	}
 
-	return err
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	return updateLobbyCountFromTracker(lobbyID)
 }
 
 func addAIToLobby(lobbyID, difficulty string) error {
-	var lobby Lobby
-	err := db.QueryRow(`
-		SELECT player_count, max_players
-		FROM lobbies
-		WHERE id = ?
-	`, lobbyID).Scan(&lobby.PlayerCount, &lobby.MaxPlayers)
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
+	var maxPlayers int
+	err = tx.QueryRow(`SELECT max_players FROM lobbies WHERE id = ?`, lobbyID).Scan(&maxPlayers)
 	if err != nil {
 		return fmt.Errorf("lobby not found")
 	}
 
-	if lobby.PlayerCount >= lobby.MaxPlayers {
+	var playersInLobby []Player
+	if playerTracker != nil {
+		ps := playerTracker.GetLobbyPlayers(lobbyID)
+		for _, s := range ps {
+			playersInLobby = append(playersInLobby, Player{ID: s.PlayerID, Name: s.PlayerName, IsAI: s.IsAI})
+		}
+	}
+	if len(playersInLobby) >= maxPlayers {
 		return fmt.Errorf("lobby is full")
 	}
 
-	aiPlayerID := uuid.New().String()
-	_, err = db.Exec(`
+	aiPlayerID := newUUID()
+	_, err = tx.Exec(`
 		INSERT INTO players (id, lobby_id, name, position_row, position_col, alive, bomb_count, max_bombs, bomb_range, is_ai, ai_difficulty, score)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, aiPlayerID, lobbyID, "AI Player", 2, 2, true, 0, 1, 1, true, difficulty, 0)
-
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Exec(`
-		UPDATE lobbies
-		SET player_count = player_count + 1
-		WHERE id = ?
-	`, lobbyID)
+	if _, err := tx.Exec(`UPDATE lobbies SET player_count = player_count + 1 WHERE id = ?`, lobbyID); err != nil {
+		return err
+	}
 
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	return updateLobbyCountFromTracker(lobbyID)
+}
+
+func updateLobbyCountFromTracker(lobbyID string) error {
+	if playerTracker == nil {
+		return nil
+	}
+	sessions := playerTracker.GetLobbyPlayers(lobbyID)
+	count := len(sessions)
+	_, err := db.Exec(`UPDATE lobbies SET player_count = ? WHERE id = ?`, count, lobbyID)
 	return err
 }

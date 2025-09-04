@@ -8,8 +8,6 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -37,6 +35,64 @@ func getGameByPlayerID(playerID string) *Game {
 		}
 	}
 	return nil
+}
+
+func (g *Game) snapshot() *Game {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	boardCopy := make([][]int, len(g.Board))
+	for i := range g.Board {
+		boardCopy[i] = make([]int, len(g.Board[i]))
+		copy(boardCopy[i], g.Board[i])
+	}
+
+	playersCopy := make(map[string]*Player)
+	for id, player := range g.Players {
+		pc := *player
+		playersCopy[id] = &pc
+	}
+
+	bombsCopy := make(map[string]*Bomb)
+	for id, bomb := range g.Bombs {
+		bc := *bomb
+		bombsCopy[id] = &bc
+	}
+
+	explosionsCopy := make(map[string]*Explosion)
+	for id, ex := range g.Explosions {
+		ec := *ex
+		explosionsCopy[id] = &ec
+	}
+
+	powerupsCopy := make(map[string]*Powerup)
+	for id, pu := range g.Powerups {
+		puc := *pu
+		powerupsCopy[id] = &puc
+	}
+
+	gameCopy := &Game{
+		ID:         g.ID,
+		LobbyID:    g.LobbyID,
+		Board:      boardCopy,
+		Players:    playersCopy,
+		Bombs:      bombsCopy,
+		Explosions: explosionsCopy,
+		Powerups:   powerupsCopy,
+		Status:     g.Status,
+		StartTime:  g.StartTime,
+		EndTime:    g.EndTime,
+		Winner:     g.Winner,
+	}
+
+	return gameCopy
+}
+
+func (g *Game) isActive() bool {
+	gamesMu.RLock()
+	defer gamesMu.RUnlock()
+	existing, ok := games[g.ID]
+	return ok && existing == g
 }
 
 func (g *Game) startAITicker(playerID string) {
@@ -68,9 +124,15 @@ func (g *Game) startAITicker(playerID string) {
 }
 
 func (g *Game) makeAIMove(playerID string) {
+	if !g.isActive() {
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	if !g.isActive() {
+		return
+	}
 	player, exists := g.Players[playerID]
 	if !exists || !player.Alive {
 		return
@@ -486,6 +548,9 @@ func (g *Game) explodeBomb(bombID string) {
 }
 
 func (g *Game) explodeBombInternal(bombID string) {
+	if !g.isActive() {
+		return
+	}
 	bomb, exists := g.Bombs[bombID]
 	if !exists {
 		return
@@ -498,7 +563,7 @@ func (g *Game) explodeBombInternal(bombID string) {
 		PlayersKilled:  0,
 	}
 
-	explosionID := uuid.New().String()
+	explosionID := newUUID()
 	explosion := &Explosion{
 		ID:       explosionID,
 		Position: bomb.Position,
@@ -546,7 +611,7 @@ func (g *Game) explodeBombInternal(bombID string) {
 			if cell == 1 {
 				break
 			}
-			dirExplosionID := uuid.New().String()
+			dirExplosionID := newUUID()
 			dirExplosion := &Explosion{
 				ID:       dirExplosionID,
 				Position: explosionPos,
@@ -627,25 +692,13 @@ func (g *Game) explodeBombInternal(bombID string) {
 		powerupsCopy[id] = &powerupCopy
 	}
 
-	gameCopy := &Game{
-		ID:         g.ID,
-		LobbyID:    g.LobbyID,
-		Board:      boardCopy,
-		Players:    playersCopy,
-		Bombs:      bombsCopy,
-		Explosions: explosionsCopy,
-		Powerups:   powerupsCopy,
-		Status:     g.Status,
-		StartTime:  g.StartTime,
-		EndTime:    g.EndTime,
-		Winner:     g.Winner,
-	}
-
-	go func() {
-		broadcastToLobby(lobbyID, "gameState", gameCopy)
-	}()
+	gameCopy := g.snapshot()
+	go func() { broadcastToLobby(lobbyID, "gameState", gameCopy) }()
 
 	time.AfterFunc(500*time.Millisecond, func() {
+		if !g.isActive() {
+			return
+		}
 		g.mu.Lock()
 		defer g.mu.Unlock()
 
@@ -654,50 +707,11 @@ func (g *Game) explodeBombInternal(bombID string) {
 		}
 		delete(g.Bombs, bombID)
 
-		boardCopy := make([][]int, len(g.Board))
-		for i := range g.Board {
-			boardCopy[i] = make([]int, len(g.Board[i]))
-			copy(boardCopy[i], g.Board[i])
+		if !g.isActive() {
+			return
 		}
 
-		playersCopy := make(map[string]*Player)
-		for id, player := range g.Players {
-			playerCopy := *player
-			playersCopy[id] = &playerCopy
-		}
-
-		bombsCopy := make(map[string]*Bomb)
-		for id, bomb := range g.Bombs {
-			bombCopy := *bomb
-			bombsCopy[id] = &bombCopy
-		}
-
-		explosionsCopy := make(map[string]*Explosion)
-		for id, explosion := range g.Explosions {
-			explosionCopy := *explosion
-			explosionsCopy[id] = &explosionCopy
-		}
-
-		powerupsCopy := make(map[string]*Powerup)
-		for id, powerup := range g.Powerups {
-			powerupCopy := *powerup
-			powerupsCopy[id] = &powerupCopy
-		}
-
-		gameCopy := &Game{
-			ID:         g.ID,
-			LobbyID:    g.LobbyID,
-			Board:      boardCopy,
-			Players:    playersCopy,
-			Bombs:      bombsCopy,
-			Explosions: explosionsCopy,
-			Powerups:   powerupsCopy,
-			Status:     g.Status,
-			StartTime:  g.StartTime,
-			EndTime:    g.EndTime,
-			Winner:     g.Winner,
-		}
-
+		gameCopy := g.snapshot()
 		broadcastToLobby(lobbyID, "gameState", gameCopy)
 	})
 }
@@ -766,13 +780,14 @@ func (g *Game) collectPowerup(playerID string, powerupID string) {
 
 	player.Powerups[powerup.Type] = playerPowerup
 
-	if powerup.Type == POWERUP_BOMB_RANGE {
+	switch powerup.Type {
+	case POWERUP_BOMB_RANGE:
 		if level == 1 {
 			player.BombRange = 2
 		} else {
 			player.BombRange = 3
 		}
-	} else if powerup.Type == POWERUP_SHIELD {
+	case POWERUP_SHIELD:
 		player.Shield = true
 	}
 
@@ -785,9 +800,15 @@ func (g *Game) collectPowerup(playerID string, powerupID string) {
 }
 
 func (g *Game) expirePowerup(playerID string, powerupType string) {
+	if !g.isActive() {
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	if !g.isActive() {
+		return
+	}
 	player, exists := g.Players[playerID]
 	if !exists {
 		return
@@ -795,9 +816,10 @@ func (g *Game) expirePowerup(playerID string, powerupType string) {
 
 	delete(player.Powerups, powerupType)
 
-	if powerupType == POWERUP_BOMB_RANGE {
+	switch powerupType {
+	case POWERUP_BOMB_RANGE:
 		player.BombRange = 1
-	} else if powerupType == POWERUP_SHIELD {
+	case POWERUP_SHIELD:
 		player.Shield = false
 	}
 }
@@ -902,13 +924,50 @@ func (g *Game) startGameTimers() {
 		broadcastToLobby(g.LobbyID, "gameState", gameCopy)
 
 		time.AfterFunc(5*time.Second, func() {
-			cleanupGame(g.ID)
+			g.endGame()
 		})
 	})
 }
 
+func (g *Game) endGame() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.PowerupTimer != nil {
+		g.PowerupTimer.Stop()
+		g.PowerupTimer = nil
+	}
+	if g.GameTimer != nil {
+		g.GameTimer.Stop()
+		g.GameTimer = nil
+	}
+
+	for _, t := range g.aiTickers {
+		t.Stop()
+	}
+	g.aiTickers = nil
+
+	g.Players = nil
+	g.Bombs = nil
+	g.Explosions = nil
+	g.Powerups = nil
+
+	cleanupGame(g.ID)
+}
+
 func cleanupGame(gameID string) {
 	gamesMu.Lock()
-	defer gamesMu.Unlock()
-	delete(games, gameID)
+	g, ok := games[gameID]
+	if ok {
+		for _, t := range g.aiTickers {
+			t.Stop()
+		}
+		g.aiTickers = nil
+		g.Players = nil
+		g.Bombs = nil
+		g.Explosions = nil
+		g.Powerups = nil
+		delete(games, gameID)
+	}
+	gamesMu.Unlock()
 }

@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,9 +18,8 @@ var (
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
+		EnableCompression: true,
 	}
-	activeConnections = make(map[string]*websocket.Conn)
-	connectionsMu     sync.RWMutex
 )
 
 func main() {

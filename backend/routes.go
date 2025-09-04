@@ -15,12 +15,12 @@ func setupRoutes() {
 	http.HandleFunc("/metrics", handleMetricsRoute)
 	http.HandleFunc("/api/players/stats", handlePlayerStatsRoute)
 
-	http.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("../frontend/css"))))
-	http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("../frontend/js"))))
-	http.Handle("/player/", http.StripPrefix("/player/", http.FileServer(http.Dir("../frontend/player"))))
-	http.Handle("/powerups/", http.StripPrefix("/powerups/", http.FileServer(http.Dir("../frontend/powerups"))))
-	http.Handle("/bombs/", http.StripPrefix("/bombs/", http.FileServer(http.Dir("../frontend/bombs"))))
-	http.Handle("/audio/", http.StripPrefix("/audio/", http.FileServer(http.Dir("../frontend/audio"))))
+	http.HandleFunc("/css/", handleStaticFiles(http.StripPrefix("/css/", http.FileServer(http.Dir("../frontend/css")))))
+	http.HandleFunc("/js/", handleStaticFiles(http.StripPrefix("/js/", http.FileServer(http.Dir("../frontend/js")))))
+	http.HandleFunc("/player/", handleStaticFiles(http.StripPrefix("/player/", http.FileServer(http.Dir("../frontend/player")))))
+	http.HandleFunc("/powerups/", handleStaticFiles(http.StripPrefix("/powerups/", http.FileServer(http.Dir("../frontend/powerups")))))
+	http.HandleFunc("/bombs/", handleStaticFiles(http.StripPrefix("/bombs/", http.FileServer(http.Dir("../frontend/bombs")))))
+	http.HandleFunc("/audio/", handleStaticFiles(http.StripPrefix("/audio/", http.FileServer(http.Dir("../frontend/audio")))))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/game/") {
