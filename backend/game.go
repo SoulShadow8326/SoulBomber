@@ -692,7 +692,19 @@ func (g *Game) explodeBombInternal(bombID string) {
 		powerupsCopy[id] = &powerupCopy
 	}
 
-	gameCopy := g.snapshot()
+	gameCopy := &Game{
+		ID:         g.ID,
+		LobbyID:    g.LobbyID,
+		Board:      boardCopy,
+		Players:    playersCopy,
+		Bombs:      bombsCopy,
+		Explosions: explosionsCopy,
+		Powerups:   powerupsCopy,
+		Status:     g.Status,
+		StartTime:  g.StartTime,
+		EndTime:    g.EndTime,
+		Winner:     g.Winner,
+	}
 	go func() { broadcastToLobby(lobbyID, "gameState", gameCopy) }()
 
 	time.AfterFunc(500*time.Millisecond, func() {
@@ -700,7 +712,6 @@ func (g *Game) explodeBombInternal(bombID string) {
 			return
 		}
 		g.mu.Lock()
-		defer g.mu.Unlock()
 
 		for _, explosionID := range explosionIDs {
 			delete(g.Explosions, explosionID)
@@ -708,11 +719,63 @@ func (g *Game) explodeBombInternal(bombID string) {
 		delete(g.Bombs, bombID)
 
 		if !g.isActive() {
+			g.mu.Unlock()
 			return
 		}
 
-		gameCopy := g.snapshot()
-		broadcastToLobby(lobbyID, "gameState", gameCopy)
+		boardCopy2 := make([][]int, len(g.Board))
+		for i := range g.Board {
+			boardCopy2[i] = make([]int, len(g.Board[i]))
+			copy(boardCopy2[i], g.Board[i])
+		}
+
+		playersCopy2 := make(map[string]*Player)
+		for id, player := range g.Players {
+			playerCopy := *player
+			playersCopy2[id] = &playerCopy
+		}
+
+		bombsCopy2 := make(map[string]*Bomb)
+		for id, bomb := range g.Bombs {
+			bombCopy := *bomb
+			bombsCopy2[id] = &bombCopy
+		}
+
+		explosionsCopy2 := make(map[string]*Explosion)
+		for id, explosion := range g.Explosions {
+			explosionCopy := *explosion
+			explosionsCopy2[id] = &explosionCopy
+		}
+
+		powerupsCopy2 := make(map[string]*Powerup)
+		for id, powerup := range g.Powerups {
+			powerupCopy := *powerup
+			powerupsCopy2[id] = &powerupCopy
+		}
+
+		lobby := g.LobbyID
+		status := g.Status
+		start := g.StartTime
+		end := g.EndTime
+		winner := g.Winner
+
+		g.mu.Unlock()
+
+		gameCopy2 := &Game{
+			ID:         g.ID,
+			LobbyID:    lobby,
+			Board:      boardCopy2,
+			Players:    playersCopy2,
+			Bombs:      bombsCopy2,
+			Explosions: explosionsCopy2,
+			Powerups:   powerupsCopy2,
+			Status:     status,
+			StartTime:  start,
+			EndTime:    end,
+			Winner:     winner,
+		}
+
+		broadcastToLobby(lobbyID, "gameState", gameCopy2)
 	})
 }
 
